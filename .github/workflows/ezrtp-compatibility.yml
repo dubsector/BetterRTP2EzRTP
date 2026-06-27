@@ -53,9 +53,11 @@ jobs:
       # 2. Skip if already processed
       - name: Check stored version
         id: version_check
+        env:
+          EZRTP_TAG: ${{ steps.ezrtp.outputs.tag }}
         run: |
           stored=$(cat .github/ezrtp-version.txt | tr -d '[:space:]')
-          latest="${{ steps.ezrtp.outputs.tag }}"
+          latest="${EZRTP_TAG}"
           if [ "$stored" = "$latest" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Already up-to-date (${latest}) — nothing to do."
