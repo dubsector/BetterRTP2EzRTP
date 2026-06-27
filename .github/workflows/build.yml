@@ -42,7 +42,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
+          MC_MIN=$(grep -oP '(?<=<minecraft.min.version>)[^<]+' pom.xml)
+          MC_MAX=$(grep -A1 'paper-api' pom.xml | grep -oP '\d+\.\d+\.\d+' | head -1)
+          EZRTP_VERSION=$(cat .github/ezrtp-version.txt | tr -d '[:space:]')
+
+          NOTES=$(cat <<EOF
+          ### Compatibility
+          | | |
+          |---|---|
+          | Server | Paper (and forks) ${MC_MIN} – ${MC_MAX} |
+          | EzRTP | ${EZRTP_VERSION} |
+
+          ### Usage
+          Drop the jar into your \`plugins/\` folder and run \`/migratertp\` to migrate your BetterRTP config to EzRTP.
+          Use \`/migratertp --dry-run\` to preview the output without writing any files.
+          EOF
+          )
+
           gh release create "${TAG_NAME}" \
             target/BetterRTP2EzRTP-*.jar \
-            --title "${TAG_NAME}" \
-            --generate-notes
+            --title "BetterRTP2EzRTP ${TAG_NAME}" \
+            --notes "${NOTES}"
