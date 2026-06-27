@@ -67,6 +67,10 @@ A GitHub Action runs every Monday and checks whether EzRTP has published a new r
 
 Most releases will require no action at all.
 
+## Security
+
+Workflows are scanned on every push with [zizmor](https://docs.zizmor.sh). View the latest report under the **Security → Code scanning** tab.
+
 ## Building from source
 
 ```bash
