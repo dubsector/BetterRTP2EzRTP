@@ -1,6 +1,6 @@
 # BetterRTP2EzRTP
 
-A one-shot Paper plugin that migrates your [BetterRTP](https://www.spigotmc.org/resources/betterrtp-random-wild-teleport.36081/) configuration to [EzRTP](https://github.com/EZRTP_REPO_HERE) format. Drop it in, run one command, and you're done.
+A one-shot Paper plugin that migrates your [BetterRTP](https://www.spigotmc.org/resources/betterrtp-random-wild-teleport.36081/) configuration to [EzRTP](https://github.com/ez-plugins/EzRTP) format. Drop it in, run one command, and you're done.
 
 ## Requirements
 
