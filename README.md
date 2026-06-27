@@ -60,12 +60,12 @@ BetterRTP's files are **not deleted** by this plugin. Once you have tested EzRTP
 
 ## Staying compatible
 
-This repository includes an automated weekly check that monitors EzRTP releases:
+A GitHub Action runs every Monday and checks whether EzRTP has published a new release:
 
-- **No config changes** → a new compatible release is published automatically.
-- **Config changes detected** → a GitHub Issue is opened with a diff so the mapper can be updated before releasing.
+- **No config changes** → the tracked version is updated silently. No new release needed.
+- **Config changes detected** → a GitHub Issue is opened with a full diff. Review it, update `ConfigMapper.java` if needed, then cut a new release manually.
 
-You should never need to touch this repo after the initial setup.
+Most releases will require no action at all.
 
 ## Building from source
 
