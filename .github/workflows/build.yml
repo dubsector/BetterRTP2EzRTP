@@ -28,7 +28,7 @@ jobs:
       - name: Upload jar artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BetterRTP2EzRTP-${{ github.sha }}
+          name: BetterRTP2EzRTP
           path: target/BetterRTP2EzRTP-*.jar
           if-no-files-found: error
 

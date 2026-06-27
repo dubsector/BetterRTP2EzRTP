@@ -1,21 +1,15 @@
 name: EzRTP Compatibility Check
 
-# Runs weekly and can be triggered manually.
-# Checks whether EzRTP has released a new version, extracts its default
-# configs, and either auto-releases (no config changes) or opens an Issue
-# (config changed — human review needed).
-
 on:
   schedule:
-    - cron: '0 6 * * 1'   # every Monday at 06:00 UTC
-  workflow_dispatch:       # manual trigger from Actions tab
+    - cron: '0 6 * * 1'  # every Monday at 06:00 UTC
+  workflow_dispatch:      # manual trigger from Actions tab
 
 permissions:
-  contents: write          # commit baseline + create release
-  issues: write            # open issue on breaking change
+  contents: write
+  issues: write
 
 env:
-  # Set this to the EzRTP GitHub repo, e.g. "AuthorName/EzRTP"
   EZRTP_REPO: ${{ vars.EZRTP_GITHUB_REPO }}
 
 jobs:
@@ -25,205 +19,163 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # needed for tagging
+          fetch-depth: 0
 
-      # -----------------------------------------------------------------------
-      # 1. Fetch latest EzRTP release info
-      # -----------------------------------------------------------------------
+      # 1. Fetch latest EzRTP release
       - name: Get latest EzRTP release
         id: ezrtp
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$EZRTP_REPO" ]; then
-            echo "::error::EZRTP_GITHUB_REPO repository variable is not set. Go to Settings → Variables → Actions and add it."
+            echo "::error::EZRTP_GITHUB_REPO variable not set. Add it under Settings > Variables > Actions."
             exit 1
           fi
-
-          release_json=$(gh api repos/$EZRTP_REPO/releases/latest)
-          tag=$(echo "$release_json" | jq -r '.tag_name')
-          jar_url=$(echo "$release_json" | jq -r '
-            .assets[]
-            | select(.name | endswith(".jar"))
-            | .browser_download_url
-          ' | head -1)
-
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          release=$(gh api repos/$EZRTP_REPO/releases/latest)
+          tag=$(echo "$release" | jq -r '.tag_name')
+          jar_url=$(echo "$release" | jq -r '.assets[] | select(.name | endswith(".jar")) | .browser_download_url' | head -1)
+          echo "tag=$tag"       >> "$GITHUB_OUTPUT"
           echo "jar_url=$jar_url" >> "$GITHUB_OUTPUT"
-          echo "Latest EzRTP release: $tag"
-          echo "Jar URL: $jar_url"
+          echo "Latest EzRTP: $tag  jar: $jar_url"
 
-      # -----------------------------------------------------------------------
-      # 2. Compare against stored version — skip if already processed
-      # -----------------------------------------------------------------------
-      - name: Check if already processed
+      # 2. Skip if already processed
+      - name: Check stored version
         id: version_check
         run: |
           stored=$(cat .github/ezrtp-version.txt | tr -d '[:space:]')
           latest="${{ steps.ezrtp.outputs.tag }}"
           if [ "$stored" = "$latest" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Already up-to-date with EzRTP $latest — nothing to do."
+            echo "Already up-to-date ($latest) — nothing to do."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "New EzRTP version detected: $stored → $latest"
+            echo "New version: $stored -> $latest"
           fi
 
-      # -----------------------------------------------------------------------
-      # 3. Download EzRTP jar and extract default configs
-      # -----------------------------------------------------------------------
-      - name: Download and extract EzRTP configs
+      # 3. Download jar and extract default configs
+      - name: Extract EzRTP configs
         if: steps.version_check.outputs.skip == 'false'
         run: |
           jar_url="${{ steps.ezrtp.outputs.jar_url }}"
           if [ -z "$jar_url" ]; then
-            echo "::error::No .jar asset found in latest EzRTP release. Check $EZRTP_REPO release assets."
+            echo "::error::No .jar asset found in latest EzRTP release."
             exit 1
           fi
-
           mkdir -p /tmp/ezrtp-extract
           curl -sSL -o /tmp/ezrtp.jar "$jar_url"
-
-          # Extract YAML files from the jar root (plugin default configs live here)
           cd /tmp/ezrtp-extract
           unzip -o /tmp/ezrtp.jar '*.yml' '*.yaml' 2>/dev/null || true
+          echo "Extracted:"; find /tmp/ezrtp-extract -type f | sort
 
-          echo "Extracted files:"
-          find /tmp/ezrtp-extract -type f | sort
-
-      # -----------------------------------------------------------------------
-      # 4. Diff extracted configs against stored baseline
-      # -----------------------------------------------------------------------
-      - name: Diff against baseline
+      # 4. Diff against baseline
+      - name: Diff configs
         id: diff
         if: steps.version_check.outputs.skip == 'false'
         run: |
-          baseline=".github/ezrtp-baseline"
-          extracted="/tmp/ezrtp-extract"
-
-          # plugin.yml is EzRTP internals, not operator config — exclude it
           diff_output=$(diff -ruN \
             --exclude="plugin.yml" \
             --exclude="README.md" \
-            "$baseline" "$extracted" 2>&1 || true)
-
+            .github/ezrtp-baseline /tmp/ezrtp-extract 2>&1 || true)
           if [ -z "$diff_output" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No config changes detected."
+            echo "No config changes."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Config changes detected:"
-            echo "$diff_output"
-            # Store diff for use in the Issue body
-            echo "$diff_output" > /tmp/config-diff.txt
+            printf '%s' "$diff_output" > /tmp/config-diff.txt
+            echo "Config changed — diff saved."
           fi
 
-      # -----------------------------------------------------------------------
-      # 5a. No config changes → update baseline, rebuild, auto-release
-      # -----------------------------------------------------------------------
-      - name: Update baseline and version file
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'false'
+      # 5a. No changes: update baseline, build, auto-release
+      - name: Update baseline and version
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'false'
         run: |
-          tag="${{ steps.ezrtp.outputs.tag }}"
           cp -r /tmp/ezrtp-extract/. .github/ezrtp-baseline/
           rm -f .github/ezrtp-baseline/plugin.yml
-          echo "$tag" > .github/ezrtp-version.txt
+          echo "${{ steps.ezrtp.outputs.tag }}" > .github/ezrtp-version.txt
 
       - name: Set up JDK 21
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'false'
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'false'
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
 
-      - name: Build jar
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'false'
+      - name: Build
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'false'
         run: mvn -B package --no-transfer-progress
 
-      - name: Commit baseline update
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'false'
+      - name: Commit baseline
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'false'
         run: |
-          tag="${{ steps.ezrtp.outputs.tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/ezrtp-baseline/ .github/ezrtp-version.txt
-          git commit -m "chore: update EzRTP baseline to $tag (no config changes)"
+          git commit -m "chore: update EzRTP baseline to ${{ steps.ezrtp.outputs.tag }}"
           git push
 
-      - name: Create GitHub Release
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'false'
+      - name: Create release
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          tag="auto-${{ steps.ezrtp.outputs.tag }}"
           ezrtp_tag="${{ steps.ezrtp.outputs.tag }}"
-          our_tag="auto-${ezrtp_tag}"
-          pom_version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          notes=$(cat <<EOF
+          Automatically verified compatible with EzRTP ${ezrtp_tag}.
 
-          gh release create "$our_tag" \
+          No changes to EzRTP config format were detected. This build is functionally identical to the previous release.
+
+          EzRTP release: https://github.com/${EZRTP_REPO}/releases/tag/${ezrtp_tag}
+          EOF
+          )
+          gh release create "$tag" \
             target/BetterRTP2EzRTP-*.jar \
-            --title "Compatible with EzRTP $ezrtp_tag" \
-            --notes "Automatically verified compatible with [EzRTP $ezrtp_tag](https://github.com/$EZRTP_REPO/releases/tag/$ezrtp_tag).
-
-No changes to EzRTP's config format were detected — this build is functionally identical to the previous release." \
+            --title "Compatible with EzRTP ${ezrtp_tag}" \
+            --notes "$notes" \
             --latest
 
-      # -----------------------------------------------------------------------
-      # 5b. Config changed → open an Issue for human review
-      # -----------------------------------------------------------------------
-      - name: Open compatibility Issue
-        if: >
-          steps.version_check.outputs.skip == 'false' &&
-          steps.diff.outputs.changed == 'true'
+      # 5b. Config changed: open issue, snapshot baseline
+      - name: Open compatibility issue
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ezrtp_tag="${{ steps.ezrtp.outputs.tag }}"
           diff_body=$(cat /tmp/config-diff.txt)
+          body=$(cat <<EOF
+          ## EzRTP ${ezrtp_tag} released with config changes
 
+          The weekly compatibility check found differences in EzRTP's default config files.
+
+          **Action required:** Review the diff, update ConfigMapper.java for any new/changed/removed fields, then push. The next scheduled run will auto-release once resolved.
+
+          \`\`\`diff
+          ${diff_body}
+          \`\`\`
+
+          **Steps to resolve:**
+          1. Review the diff above
+          2. Update ConfigMapper.java and MigrationReport entries as needed
+          3. Run: echo '${ezrtp_tag}' > .github/ezrtp-version.txt
+          4. Update .github/ezrtp-baseline/ with the new configs
+          5. Commit and push, then create a release manually
+
+          _Opened automatically by the EzRTP Compatibility Check workflow._
+          EOF
+          )
           gh issue create \
-            --title "EzRTP $ezrtp_tag — config changes detected, mapper review needed" \
+            --title "EzRTP ${ezrtp_tag}: config changes need review" \
             --label "compatibility" \
-            --body "## EzRTP $ezrtp_tag released with config changes
+            --body "$body"
 
-The weekly compatibility check found differences between EzRTP's default config files and the stored baseline.
-
-**Action required:** Review the diff below, update \`ConfigMapper.java\` if any new fields need to be mapped (or flagged as dropped/manual), then push a commit. The next scheduled run will auto-release once the baseline is updated.
-
-<details>
-<summary>Config diff</summary>
-
-\`\`\`diff
-$diff_body
-\`\`\`
-
-</details>
-
-**Steps to resolve:**
-1. Review the diff above
-2. Update \`ConfigMapper.java\` for any new/changed/removed fields
-3. Update \`MigrationReport\` entries as needed
-4. Run \`echo '$ezrtp_tag' > .github/ezrtp-version.txt\` and update \`.github/ezrtp-baseline/\` with the new extracted configs
-5. Commit and push — the build workflow will produce a jar, then create a release manually
-
-_Opened automatically by the EzRTP Compatibility Check workflow._"
-
-          # Also update baseline so we don't re-open the same issue next week,
-          # but do NOT update ezrtp-version.txt — that's the human's job after fixing.
+      - name: Snapshot baseline for review
+        if: steps.version_check.outputs.skip == 'false' && steps.diff.outputs.changed == 'true'
+        run: |
           cp -r /tmp/ezrtp-extract/. .github/ezrtp-baseline/
           rm -f .github/ezrtp-baseline/plugin.yml
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/ezrtp-baseline/
-          git commit -m "chore: snapshot EzRTP $ezrtp_tag baseline (review required)" || true
+          git commit -m "chore: snapshot EzRTP ${{ steps.ezrtp.outputs.tag }} baseline (review required)" || true
           git push || true
