@@ -3,10 +3,9 @@ name: Build
 on:
   push:
     branches: [ "**" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published ]
 
 jobs:
   build:
@@ -25,15 +24,16 @@ jobs:
       - name: Build with Maven
         run: mvn -B package --no-transfer-progress
 
-      - name: Upload jar artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: BetterRTP2EzRTP
           path: target/BetterRTP2EzRTP-*.jar
           if-no-files-found: error
 
-      - name: Attach jar to GitHub Release
-        if: github.event_name == 'release'
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: target/BetterRTP2EzRTP-*.jar
+          generate_release_notes: true
