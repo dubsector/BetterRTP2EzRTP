@@ -1,0 +1,17 @@
+name: BetterRTP2EzRTP
+version: '${project.version}'
+main: com.avancent.betterrtp2ezrtp.BetterRTP2EzRTP
+api-version: '1.21'
+description: One-shot migration tool from BetterRTP to EzRTP
+authors: [Avancent]
+
+commands:
+  migratertp:
+    description: Migrate BetterRTP config to EzRTP format
+    usage: /migratertp [--dry-run]
+    permission: betterrtp2ezrtp.migrate
+
+permissions:
+  betterrtp2ezrtp.migrate:
+    description: Allows running the BetterRTP to EzRTP migration
+    default: op
