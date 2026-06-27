@@ -48,9 +48,9 @@ jobs:
 
           NOTES=$(cat <<EOF
           ### Compatibility
-          | | |
+          | Software | Version |
           |---|---|
-          | Server | Paper (and forks) ${MC_MIN} – ${MC_MAX} |
+          | Paper (and forks) | ${MC_MIN} – ${MC_MAX} |
           | EzRTP | ${EZRTP_VERSION} |
 
           ### Usage
